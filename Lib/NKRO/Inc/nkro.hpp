@@ -50,6 +50,7 @@ public:
     // Flash保存・読み込み
     void saveToFlash();
     void loadFromFlash();
+    void resetDefaults();
     
     // デバッグ用: Flash操作の結果コード
     // 0: 未実行/成功, 1: Erase Error, 2: Program Error, 3: Verify Error, 4: Magic Error

@@ -474,9 +474,24 @@ static uint8_t USBD_CUSTOM_HID_Setup(USBD_HandleTypeDef *pdev,
           (void)USBD_CtlSendData(pdev, (uint8_t *)&hhid->IdleState, 1U);
           break;
 
+        case CUSTOM_HID_REQ_GET_REPORT:
+          /* GET_REPORT: Send Feature Report data to host */
+          (void)USBD_CtlSendData(pdev, hhid->Feature_buf,
+                                 MIN(32U, req->wLength));
+          break;
+
         case CUSTOM_HID_REQ_SET_REPORT:
           hhid->IsReportAvailable = 1U;
-          (void)USBD_CtlPrepareRx(pdev, hhid->Report_buf, req->wLength);
+          /* Check if this is a Feature Report (wValue high byte = 0x03) */
+          if ((req->wValue >> 8) == 0x03U)
+          {
+            hhid->IsFeatureReportAvailable = 1U;
+            (void)USBD_CtlPrepareRx(pdev, hhid->Feature_buf, req->wLength);
+          }
+          else
+          {
+            (void)USBD_CtlPrepareRx(pdev, hhid->Report_buf, req->wLength);
+          }
           break;
 
         default:
@@ -723,7 +738,15 @@ static uint8_t USBD_CUSTOM_HID_EP0_RxReady(USBD_HandleTypeDef *pdev)
     return (uint8_t)USBD_FAIL;
   }
 
-  if (hhid->IsReportAvailable == 1U)
+  if (hhid->IsFeatureReportAvailable == 1U)
+  {
+    /* Feature Report received via SET_REPORT */
+    ((USBD_CUSTOM_HID_ItfTypeDef *)pdev->pUserData)->OutEvent(hhid->Feature_buf[0],
+                                                              hhid->Feature_buf[1]);
+    hhid->IsFeatureReportAvailable = 0U;
+    hhid->IsReportAvailable = 0U;
+  }
+  else if (hhid->IsReportAvailable == 1U)
   {
     ((USBD_CUSTOM_HID_ItfTypeDef *)pdev->pUserData)->OutEvent(hhid->Report_buf[0],
                                                               hhid->Report_buf[1]);

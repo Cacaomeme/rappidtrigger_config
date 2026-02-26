@@ -130,14 +130,27 @@ __ALIGN_BEGIN static uint8_t CUSTOM_HID_ReportDesc_FS[USBD_CUSTOM_HID_REPORT_DES
   0x26, 0xFF, 0x00,  //   Logical Maximum (255)
   0x75, 0x08,        //   Report Size (8)
   0x95, 0x20,        //   Report Count (32)
-  0x91, 0x02,        //   Output (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+  0x91, 0x02,        //   Output (Data,Var,Abs)
+
+  // Feature Report (Vendor Defined for Config Response) 32 bytes
+  0x06, 0x00, 0xFF,  //   Usage Page (Vendor Defined 0xFF00)
+  0x09, 0x02,        //   Usage (0x02)
+  0x15, 0x00,        //   Logical Minimum (0)
+  0x26, 0xFF, 0x00,  //   Logical Maximum (255)
+  0x75, 0x08,        //   Report Size (8)
+  0x95, 0x20,        //   Report Count (32)
+  0xB1, 0x02,        //   Feature (Data,Var,Abs)
 
   /* USER CODE END 0 */
   0xC0    /*     END_COLLECTION	             */
 };
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
-uint8_t RxBuffer[33]; // 受信バッファ (32 bytes + 1 alignment safety)
+uint8_t RxBuffer[33];
+/* Feature Report処理関数 (main.cppで実装) */
+extern void ProcessConfigPacket(uint8_t* data, uint16_t len);
+extern void ProcessFeatureReport(uint8_t* data, uint16_t len, uint8_t* response);
+extern volatile uint8_t usb_rx_err;
 /* USER CODE END PRIVATE_VARIABLES */
 
 /**
@@ -220,12 +233,17 @@ static int8_t CUSTOM_HID_OutEvent_FS(uint8_t event_idx, uint8_t state)
   UNUSED(event_idx);
   UNUSED(state);
 
-  // データ受信処理
   USBD_CUSTOM_HID_HandleTypeDef *hhid = (USBD_CUSTOM_HID_HandleTypeDef*)hUsbDeviceFS.pClassData;
   if (hhid != NULL) {
-      // 実際に受信したデータ長を取得
-      uint16_t rx_len = USBD_LL_GetRxDataSize(&hUsbDeviceFS, event_idx);
-      ProcessConfigPacket(hhid->Report_buf, rx_len); 
+      // Feature Report (SET_REPORT経由) の場合
+      if (hhid->IsFeatureReportAvailable == 1U) {
+          // Feature_bufをコマンドとして処理し、応答をFeature_bufに書き戻す
+          ProcessFeatureReport(hhid->Feature_buf, 32, hhid->Feature_buf);
+      } else {
+          // Output Report (通常のInterrupt OUT) の場合
+          uint16_t rx_len = USBD_LL_GetRxDataSize(&hUsbDeviceFS, event_idx);
+          ProcessConfigPacket(hhid->Report_buf, rx_len);
+      }
   }
 
   /* Start next USB packet transfer once data processing is completed */

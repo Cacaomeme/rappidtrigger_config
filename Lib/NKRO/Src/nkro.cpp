@@ -206,6 +206,13 @@ void RapidTriggerKeyboard::loadFromFlash() {
     }
 }
 
+void RapidTriggerKeyboard::resetDefaults() {
+    for (int i = 0; i < TOTAL_KEY_COUNT; i++) {
+        keyStates[i].sensitivity = 50;  // デフォルト感度
+    }
+    flash_status = 0;
+}
+
 void RapidTriggerKeyboard::updateRapidTriggerState(RapidTriggerState& state, uint32_t currentVal) {
     // 0. 初期化 (Calibration)
     if (!state.calibrated) {

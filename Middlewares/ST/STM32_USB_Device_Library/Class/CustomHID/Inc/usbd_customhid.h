@@ -109,10 +109,12 @@ typedef struct _USBD_CUSTOM_HID_Itf
 typedef struct
 {
   uint8_t  Report_buf[USBD_CUSTOMHID_OUTREPORT_BUF_SIZE];
+  uint8_t  Feature_buf[33];  /* Feature Report buffer (32B + safety) */
   uint32_t Protocol;
   uint32_t IdleState;
   uint32_t AltSetting;
   uint32_t IsReportAvailable;
+  uint32_t IsFeatureReportAvailable;
   CUSTOM_HID_StateTypeDef state;
 } USBD_CUSTOM_HID_HandleTypeDef;
 /**

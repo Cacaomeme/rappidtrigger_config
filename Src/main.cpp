@@ -1,6 +1,7 @@
 #include "main.h"
 #include "stm32g4xx_hal.h"
 #include <stdio.h>
+#include <string.h>
 #include "usb_device.h"
 #include "usbd_customhid.h"
 #include "tim.h"
@@ -15,7 +16,7 @@ RapidTriggerKeyboard keyboard;
 // 知覚的な明るさレベル (0-255)。PWMへはガンマ補正(²)で変換する
 volatile uint32_t led_brightness = 0;
 
-// USB経由の設定変更リクエスト
+// USB経由の設定変更リクエスト (Output Report互換)
 volatile bool config_update_request = false;
 volatile uint8_t config_target = 0;
 volatile uint32_t config_val = 0;
@@ -27,7 +28,104 @@ volatile uint32_t usb_rx_cnt = 0;
 volatile uint8_t usb_rx_err = 0;
 volatile uint8_t last_payload[4] = {0};
 
-// USB設定パケット処理
+// ===== Feature Report コマンドID =====
+#define CMD_SET_SENSITIVITY  0x01
+#define CMD_GET_SENSITIVITY  0x02
+#define CMD_SAVE_TO_FLASH    0x10
+#define CMD_RESET_DEFAULTS   0x11
+#define CMD_GET_KEY_COUNT    0x20
+
+// 応答ステータス
+#define RESP_OK              0x00
+#define RESP_ERROR           0x01
+#define RESP_INVALID_PARAM   0x02
+
+// Feature Report処理 (SET_REPORT経由で呼ばれる)
+// data: 受信した32バイト, response: 応答を書き込む32バイト (同じバッファ)
+extern "C" void ProcessFeatureReport(uint8_t* data, uint16_t len, uint8_t* response) {
+    usb_rx_cnt++;
+    if (len < 1) return;
+
+    // data と response は同じバッファ(Feature_buf)を指すため、
+    // 応答書き込み前に受信データをローカルにコピーする
+    uint8_t local[32];
+    memcpy(local, data, 32);
+
+    uint8_t cmd = local[0];
+    last_received_cmd = cmd;
+
+    // 応答バッファをクリア
+    memset(response, 0, 32);
+    response[0] = cmd;  // エコーバック
+
+    switch (cmd) {
+    case CMD_SET_SENSITIVITY: {
+        // local[1]=keyIndex, local[2..3]=value (uint16_t LE)
+        uint8_t keyIdx = local[1];
+        uint16_t value = (uint16_t)local[2] | ((uint16_t)local[3] << 8);
+
+        if (value < 1 || value > 4095) {
+            response[1] = RESP_INVALID_PARAM;
+            break;
+        }
+
+        keyboard.setSensitivity((int)keyIdx, (uint32_t)value);
+        response[1] = RESP_OK;
+        printf("[CFG] SetSens Key:%d Val:%d\r\n", keyIdx, value);
+        break;
+    }
+    case CMD_GET_SENSITIVITY: {
+        // local[1]=keyIndex
+        uint8_t keyIdx = local[1];
+        if (keyIdx >= RapidTriggerKeyboard::TOTAL_KEY_COUNT && keyIdx != 0xFF) {
+            response[1] = RESP_INVALID_PARAM;
+            break;
+        }
+
+        response[1] = RESP_OK;
+
+        if (keyIdx == 0xFF) {
+            // 全キーの感度を返す (最大17キー × 2バイト = 34 → 32バイトに収まるよう15キー分)
+            // response[2..3]=key0, [4..5]=key1, ...
+            int count = RapidTriggerKeyboard::TOTAL_KEY_COUNT;
+            if (count > 15) count = 15; // 32バイト制限
+            for (int i = 0; i < count; i++) {
+                uint16_t s = (uint16_t)keyboard.getSensitivity(i);
+                response[2 + i * 2] = (uint8_t)(s & 0xFF);
+                response[2 + i * 2 + 1] = (uint8_t)(s >> 8);
+            }
+        } else {
+            uint16_t s = (uint16_t)keyboard.getSensitivity(keyIdx);
+            response[2] = (uint8_t)(s & 0xFF);
+            response[3] = (uint8_t)(s >> 8);
+        }
+        break;
+    }
+    case CMD_SAVE_TO_FLASH: {
+        keyboard.saveToFlash();
+        response[1] = (keyboard.flash_status == 0) ? RESP_OK : RESP_ERROR;
+        response[2] = (uint8_t)keyboard.flash_status;
+        printf("[CFG] SaveFlash status:%d\r\n", keyboard.flash_status);
+        break;
+    }
+    case CMD_RESET_DEFAULTS: {
+        keyboard.resetDefaults();
+        response[1] = RESP_OK;
+        printf("[CFG] ResetDefaults\r\n");
+        break;
+    }
+    case CMD_GET_KEY_COUNT: {
+        response[1] = RESP_OK;
+        response[2] = (uint8_t)RapidTriggerKeyboard::TOTAL_KEY_COUNT;
+        break;
+    }
+    default:
+        response[1] = RESP_ERROR;
+        break;
+    }
+}
+
+// 旧Output Report互換 (既存のInterrupt OUT経由)
 extern "C" void ProcessConfigPacket(uint8_t* data, uint16_t len) {
     last_received_len = len;
     usb_rx_cnt++;
@@ -45,14 +143,13 @@ extern "C" void ProcessConfigPacket(uint8_t* data, uint16_t len) {
     uint8_t idx_target = 1;
     uint8_t idx_val = 2;
 
-    // HIDのReport ID(0x00)が先頭に付く場合のオフセット対応
     if (cmd == 0x00 && len > 1) {
         cmd = data[1];
         idx_target = 2;
         idx_val = 3;
     }
 
-    if (cmd == 0x01) { // Set Sensitivity
+    if (cmd == 0x01) {
         config_target = data[idx_target];
         config_val = data[idx_val];
         config_update_request = true;
@@ -62,9 +159,12 @@ extern "C" void ProcessConfigPacket(uint8_t* data, uint16_t len) {
 extern "C" void setup()
 {
     keyboard.init();
+    keyboard.loadFromFlash();
 
     printf("=== Rapid Trigger Keyboard ===\r\n");
-    printf("Sensitivity(K0): %lu\r\n", keyboard.getSensitivity(0));
+    printf("Keys:%d Sensitivity(K0):%lu\r\n",
+           RapidTriggerKeyboard::TOTAL_KEY_COUNT,
+           keyboard.getSensitivity(0));
 
     // ADCキャリブレーション
     if (HAL_ADCEx_Calibration_Start(&hadc1, ADC_SINGLE_ENDED) != HAL_OK) {
@@ -92,12 +192,12 @@ void selectMuxChannel(int channel) {
     HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, (channel & 0x08) ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
-uint32_t debug_adc1[16];  // MUX1(ADC1) 各チャンネルのADC値
-uint32_t debug_adc2[16];  // MUX2(ADC2) 各チャンネルのADC値
+uint32_t debug_adc1[16];
+uint32_t debug_adc2[16];
 
 extern "C" void loop()
 {
-    // USB経由の設定変更
+    // USB経由の設定変更 (旧Output Report互換)
     if (config_update_request) {
         config_update_request = false;
         keyboard.setSensitivity((int)config_target, config_val);
@@ -135,11 +235,11 @@ extern "C" void loop()
                 debug_adc1[ch] = val1;
             } else {
                 HAL_ADC_Stop(&hadc1);
-                debug_adc1[ch] = 8888; // Timeout
+                debug_adc1[ch] = 8888;
             }
         } else {
             HAL_ADC_Stop(&hadc1);
-            debug_adc1[ch] = 9000 + ret1; // Error
+            debug_adc1[ch] = 9000 + ret1;
         }
 
         // ADC2 (MUX2)
@@ -175,7 +275,7 @@ extern "C" void loop()
                    keyboard.getSensitivity(0), (uint32_t)led_brightness,
                    last_received_cmd, usb_rx_cnt);
 
-            // MUX1(ADC1): キー名とADC値 (nkro.cppのマッピング順)
+            // MUX1(ADC1): キー名とADC値
             printf(" KP0:%4lu KP.:%4lu Ent:%4lu KP3:%4lu KP2:%4lu KP1:%4lu KP6:%4lu KP5:%4lu KP4:%4lu\r\n",
                    debug_adc1[0],  debug_adc1[15], debug_adc1[14],
                    debug_adc1[13], debug_adc1[12], debug_adc1[11],
