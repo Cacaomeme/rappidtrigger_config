@@ -788,15 +788,15 @@
 
         // HID keycode → display name
         const HID_KEYCODES = [
-            { code: 0x53, name: 'Num Lock' }, { code: 0x54, name: 'KP /' },
-            { code: 0x55, name: 'KP *' }, { code: 0x56, name: 'KP -' },
-            { code: 0x57, name: 'KP +' }, { code: 0x58, name: 'KP Enter' },
-            { code: 0x59, name: 'KP 1' }, { code: 0x5A, name: 'KP 2' },
-            { code: 0x5B, name: 'KP 3' }, { code: 0x5C, name: 'KP 4' },
-            { code: 0x5D, name: 'KP 5' }, { code: 0x5E, name: 'KP 6' },
-            { code: 0x5F, name: 'KP 7' }, { code: 0x60, name: 'KP 8' },
-            { code: 0x61, name: 'KP 9' }, { code: 0x62, name: 'KP 0' },
-            { code: 0x63, name: 'KP .' },
+            { code: 0x53, name: 'Num Lock' }, { code: 0x54, name: 'テンキー /' },
+            { code: 0x55, name: 'テンキー *' }, { code: 0x56, name: 'テンキー -' },
+            { code: 0x57, name: 'テンキー +' }, { code: 0x58, name: 'テンキー Enter' },
+            { code: 0x59, name: 'テンキー 1' }, { code: 0x5A, name: 'テンキー 2' },
+            { code: 0x5B, name: 'テンキー 3' }, { code: 0x5C, name: 'テンキー 4' },
+            { code: 0x5D, name: 'テンキー 5' }, { code: 0x5E, name: 'テンキー 6' },
+            { code: 0x5F, name: 'テンキー 7' }, { code: 0x60, name: 'テンキー 8' },
+            { code: 0x61, name: 'テンキー 9' }, { code: 0x62, name: 'テンキー 0' },
+            { code: 0x63, name: 'テンキー .' },
             { code: 0x04, name: 'A' }, { code: 0x05, name: 'B' },
             { code: 0x06, name: 'C' }, { code: 0x07, name: 'D' },
             { code: 0x08, name: 'E' }, { code: 0x09, name: 'F' },
@@ -828,7 +828,7 @@
             if (!entry) return '0x' + code.toString(16).toUpperCase();
             // Shorten for SVG display
             let n = entry.name;
-            if (n.startsWith('KP ')) n = n.slice(3); // "KP 7" → "7"
+            if (n.startsWith('テンキー ')) n = n.slice(5); // "テンキー 7" → "7"
             if (n === 'Num Lock') n = 'Num';
             if (n === 'Backspace') n = 'BS';
             if (n === 'Escape') n = 'Esc';
