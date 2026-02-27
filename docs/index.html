@@ -659,10 +659,108 @@
             border-color: var(--danger);
             color: var(--danger);
         }
+
+        /* ===== Key Picker Overlay ===== */
+        .key-picker-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 999;
+            background: rgba(0, 0, 0, 0.4);
+        }
+
+        .key-picker-overlay.open {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .key-picker {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            width: 360px;
+            max-height: 70vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+        }
+
+        .key-picker-search {
+            padding: 10px 14px;
+            border: none;
+            border-bottom: 1px solid var(--border);
+            background: transparent;
+            color: var(--text);
+            font-size: 0.9rem;
+            font-family: inherit;
+            outline: none;
+            border-radius: 12px 12px 0 0;
+        }
+
+        .key-picker-list {
+            overflow-y: auto;
+            flex: 1;
+            padding: 4px 0;
+        }
+
+        .key-picker-item {
+            padding: 8px 14px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.1s;
+        }
+
+        .key-picker-item:hover {
+            background: rgba(99, 102, 241, 0.15);
+        }
+
+        .key-picker-item.selected {
+            background: var(--accent);
+            color: white;
+        }
+
+        .key-picker-item .kp-code {
+            color: var(--text-muted);
+            margin-left: 6px;
+            font-size: 0.75rem;
+        }
+
+        .key-picker-item.selected .kp-code {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        .key-pick-btn {
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text);
+            font-size: 0.8rem;
+            font-family: inherit;
+            cursor: pointer;
+            text-align: left;
+            min-width: 80px;
+            transition: border-color 0.15s;
+        }
+
+        .key-pick-btn:hover {
+            border-color: var(--accent-light);
+        }
     </style>
 </head>
 
 <body>
+    <!-- Key Picker Overlay -->
+    <div class="key-picker-overlay" id="keyPickerOverlay" onclick="if(event.target===this)closeKeyPicker()">
+        <div class="key-picker">
+            <input class="key-picker-search" id="keyPickerSearch" placeholder="キーを検索..." autocomplete="off">
+            <div class="key-picker-list" id="keyPickerList"></div>
+        </div>
+    </div>
     <div class="app">
         <div class="header">
             <h1>⚡ Rapid Trigger Config</h1>
@@ -765,8 +863,8 @@
                         </div>
                         <div class="param-row">
                             <span class="param-label">キーマップ</span>
-                            <select class="param-select" id="pKeymap" onchange="onKeymapChange()"
-                                style="flex:1"></select>
+                            <button class="key-pick-btn" id="pKeymap" style="flex:1"
+                                onclick="openKeymapPicker()">---</button>
                         </div>
                     </div>
                 </div>
@@ -885,40 +983,51 @@
             0x57, 0x61, 0x60, 0x5F, 0x56, 0x55, 0x54, 0x53
         ];
 
-        // HID keycode → display name
+        // HID keycode → display name (full keyboard)
         const HID_KEYCODES = [
-            { code: 0x53, name: 'Num Lock' }, { code: 0x54, name: 'テンキー /' },
-            { code: 0x55, name: 'テンキー *' }, { code: 0x56, name: 'テンキー -' },
-            { code: 0x57, name: 'テンキー +' }, { code: 0x58, name: 'テンキー Enter' },
-            { code: 0x59, name: 'テンキー 1' }, { code: 0x5A, name: 'テンキー 2' },
-            { code: 0x5B, name: 'テンキー 3' }, { code: 0x5C, name: 'テンキー 4' },
-            { code: 0x5D, name: 'テンキー 5' }, { code: 0x5E, name: 'テンキー 6' },
-            { code: 0x5F, name: 'テンキー 7' }, { code: 0x60, name: 'テンキー 8' },
-            { code: 0x61, name: 'テンキー 9' }, { code: 0x62, name: 'テンキー 0' },
-            { code: 0x63, name: 'テンキー .' },
-            { code: 0x04, name: 'A' }, { code: 0x05, name: 'B' },
-            { code: 0x06, name: 'C' }, { code: 0x07, name: 'D' },
-            { code: 0x08, name: 'E' }, { code: 0x09, name: 'F' },
-            { code: 0x0A, name: 'G' }, { code: 0x0B, name: 'H' },
-            { code: 0x0C, name: 'I' }, { code: 0x0D, name: 'J' },
-            { code: 0x0E, name: 'K' }, { code: 0x0F, name: 'L' },
-            { code: 0x10, name: 'M' }, { code: 0x11, name: 'N' },
-            { code: 0x12, name: 'O' }, { code: 0x13, name: 'P' },
-            { code: 0x14, name: 'Q' }, { code: 0x15, name: 'R' },
-            { code: 0x16, name: 'S' }, { code: 0x17, name: 'T' },
-            { code: 0x18, name: 'U' }, { code: 0x19, name: 'V' },
-            { code: 0x1A, name: 'W' }, { code: 0x1B, name: 'X' },
+            // アルファベット
+            { code: 0x04, name: 'A' }, { code: 0x05, name: 'B' }, { code: 0x06, name: 'C' }, { code: 0x07, name: 'D' },
+            { code: 0x08, name: 'E' }, { code: 0x09, name: 'F' }, { code: 0x0A, name: 'G' }, { code: 0x0B, name: 'H' },
+            { code: 0x0C, name: 'I' }, { code: 0x0D, name: 'J' }, { code: 0x0E, name: 'K' }, { code: 0x0F, name: 'L' },
+            { code: 0x10, name: 'M' }, { code: 0x11, name: 'N' }, { code: 0x12, name: 'O' }, { code: 0x13, name: 'P' },
+            { code: 0x14, name: 'Q' }, { code: 0x15, name: 'R' }, { code: 0x16, name: 'S' }, { code: 0x17, name: 'T' },
+            { code: 0x18, name: 'U' }, { code: 0x19, name: 'V' }, { code: 0x1A, name: 'W' }, { code: 0x1B, name: 'X' },
             { code: 0x1C, name: 'Y' }, { code: 0x1D, name: 'Z' },
-            { code: 0x1E, name: '1' }, { code: 0x1F, name: '2' },
-            { code: 0x20, name: '3' }, { code: 0x21, name: '4' },
-            { code: 0x22, name: '5' }, { code: 0x23, name: '6' },
-            { code: 0x24, name: '7' }, { code: 0x25, name: '8' },
+            // 数字
+            { code: 0x1E, name: '1' }, { code: 0x1F, name: '2' }, { code: 0x20, name: '3' }, { code: 0x21, name: '4' },
+            { code: 0x22, name: '5' }, { code: 0x23, name: '6' }, { code: 0x24, name: '7' }, { code: 0x25, name: '8' },
             { code: 0x26, name: '9' }, { code: 0x27, name: '0' },
-            { code: 0x28, name: 'Enter' }, { code: 0x29, name: 'Escape' },
-            { code: 0x2A, name: 'Backspace' }, { code: 0x2B, name: 'Tab' },
-            { code: 0x2C, name: 'Space' },
-            { code: 0x4F, name: '→' }, { code: 0x50, name: '←' },
-            { code: 0x51, name: '↓' }, { code: 0x52, name: '↑' },
+            // 制御キー
+            { code: 0x28, name: 'Enter' }, { code: 0x29, name: 'Escape' }, { code: 0x2A, name: 'Backspace' },
+            { code: 0x2B, name: 'Tab' }, { code: 0x2C, name: 'Space' }, { code: 0x39, name: 'Caps Lock' },
+            // 記号
+            { code: 0x2D, name: '- (Minus)' }, { code: 0x2E, name: '= (Equal)' },
+            { code: 0x2F, name: '[ (Left Bracket)' }, { code: 0x30, name: '] (Right Bracket)' },
+            { code: 0x31, name: '\\ (Backslash)' }, { code: 0x33, name: '; (Semicolon)' },
+            { code: 0x34, name: "' (Quote)" }, { code: 0x35, name: '` (Grave)' },
+            { code: 0x36, name: ', (Comma)' }, { code: 0x37, name: '. (Period)' }, { code: 0x38, name: '/ (Slash)' },
+            // ファンクションキー
+            { code: 0x3A, name: 'F1' }, { code: 0x3B, name: 'F2' }, { code: 0x3C, name: 'F3' }, { code: 0x3D, name: 'F4' },
+            { code: 0x3E, name: 'F5' }, { code: 0x3F, name: 'F6' }, { code: 0x40, name: 'F7' }, { code: 0x41, name: 'F8' },
+            { code: 0x42, name: 'F9' }, { code: 0x43, name: 'F10' }, { code: 0x44, name: 'F11' }, { code: 0x45, name: 'F12' },
+            { code: 0x68, name: 'F13' }, { code: 0x69, name: 'F14' }, { code: 0x6A, name: 'F15' }, { code: 0x6B, name: 'F16' },
+            { code: 0x6C, name: 'F17' }, { code: 0x6D, name: 'F18' }, { code: 0x6E, name: 'F19' }, { code: 0x6F, name: 'F20' },
+            { code: 0x70, name: 'F21' }, { code: 0x71, name: 'F22' }, { code: 0x72, name: 'F23' }, { code: 0x73, name: 'F24' },
+            // ナビゲーション
+            { code: 0x46, name: 'Print Screen' }, { code: 0x47, name: 'Scroll Lock' }, { code: 0x48, name: 'Pause' },
+            { code: 0x49, name: 'Insert' }, { code: 0x4A, name: 'Home' }, { code: 0x4B, name: 'Page Up' },
+            { code: 0x4C, name: 'Delete' }, { code: 0x4D, name: 'End' }, { code: 0x4E, name: 'Page Down' },
+            { code: 0x4F, name: '→ (Right)' }, { code: 0x50, name: '← (Left)' },
+            { code: 0x51, name: '↓ (Down)' }, { code: 0x52, name: '↑ (Up)' },
+            // テンキー
+            { code: 0x53, name: 'Num Lock' }, { code: 0x54, name: 'テンキー /' }, { code: 0x55, name: 'テンキー *' },
+            { code: 0x56, name: 'テンキー -' }, { code: 0x57, name: 'テンキー +' }, { code: 0x58, name: 'テンキー Enter' },
+            { code: 0x59, name: 'テンキー 1' }, { code: 0x5A, name: 'テンキー 2' }, { code: 0x5B, name: 'テンキー 3' },
+            { code: 0x5C, name: 'テンキー 4' }, { code: 0x5D, name: 'テンキー 5' }, { code: 0x5E, name: 'テンキー 6' },
+            { code: 0x5F, name: 'テンキー 7' }, { code: 0x60, name: 'テンキー 8' }, { code: 0x61, name: 'テンキー 9' },
+            { code: 0x62, name: 'テンキー 0' }, { code: 0x63, name: 'テンキー .' },
+            // その他
+            { code: 0x65, name: 'Menu (App)' },
         ];
 
         // Returns short display name for a keycode (for SVG labels)
@@ -927,11 +1036,13 @@
             if (!entry) return '0x' + code.toString(16).toUpperCase();
             // Shorten for SVG display
             let n = entry.name;
-            if (n.startsWith('テンキー ')) n = n.slice(5); // "テンキー 7" → "7"
+            if (n.startsWith('テンキー ')) n = n.slice(5);
+            // Strip parenthetical: "→ (Right)" → "→"
+            const pi = n.indexOf(' (');
+            if (pi > 0) n = n.substring(0, pi);
             if (n === 'Num Lock') n = 'Num';
             if (n === 'Backspace') n = 'BS';
             if (n === 'Escape') n = 'Esc';
-            if (n === 'Enter' && code === 0x58) n = 'Enter'; // KP Enter
             return n;
         }
 
@@ -957,14 +1068,50 @@
             { bit: 0x08, label: 'Win' },
         ];
 
-        // マクロ用キー一覧 (ドロップダウン用、「なし」含む)
-        const MACRO_KEYS = [
-            { code: 0, name: 'なし' },
-            ...HID_KEYCODES
-        ];
+        // マクロ用キー一覧 (「なし」含む)
+        const MACRO_KEYS = [{ code: 0, name: 'なし' }, ...HID_KEYCODES];
+
+        // ===== Key Picker (searchable overlay) =====
+        let keyPickerCallback = null;
+        let keyPickerCurrentCode = 0;
+        let keyPickerItems = [];  // current item set (HID_KEYCODES or MACRO_KEYS)
+
+        function openKeyPicker(currentCode, items, onSelect) {
+            keyPickerCallback = onSelect;
+            keyPickerCurrentCode = currentCode;
+            keyPickerItems = items;
+            const search = document.getElementById('keyPickerSearch');
+            search.value = '';
+            renderKeyPickerList('');
+            document.getElementById('keyPickerOverlay').classList.add('open');
+            setTimeout(() => search.focus(), 50);
+            search.oninput = () => renderKeyPickerList(search.value);
+        }
+
+        function closeKeyPicker() {
+            document.getElementById('keyPickerOverlay').classList.remove('open');
+            keyPickerCallback = null;
+        }
+
+        function renderKeyPickerList(filter) {
+            const list = document.getElementById('keyPickerList');
+            list.innerHTML = '';
+            const f = filter.toLowerCase();
+            for (const k of keyPickerItems) {
+                const label = k.name + (k.code ? ' (0x' + k.code.toString(16).toUpperCase() + ')' : '');
+                if (f && !label.toLowerCase().includes(f)) continue;
+                const item = document.createElement('div');
+                item.className = 'key-picker-item' + (k.code === keyPickerCurrentCode ? ' selected' : '');
+                item.innerHTML = k.name + (k.code ? '<span class="kp-code">0x' + k.code.toString(16).toUpperCase() + '</span>' : '');
+                item.onclick = () => {
+                    if (keyPickerCallback) keyPickerCallback(k.code);
+                    closeKeyPicker();
+                };
+                list.appendChild(item);
+            }
+        }
 
         // マクロタブ表示順: テンキーの自然な配列順
-        // 内部idx: 0=KP0, 1=KP., 2=Enter, 3=3, 4=2, 5=1, 6=6, 7=5, 8=4, 9=+, 10=9, 11=8, 12=7, 13=-, 14=*, 15=/, 16=NumLock
         const DISPLAY_ORDER = [16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 0, 1];
 
         // ===== Tabs =====
@@ -1000,23 +1147,12 @@
             document.getElementById('pDZ').value = dzValues[idx];
             document.getElementById('pDZNum').value = dzValues[idx];
 
-            // Populate keymap dropdown
-            const sel = document.getElementById('pKeymap');
-            sel.innerHTML = '';
-            for (const k of HID_KEYCODES) {
-                const opt = document.createElement('option');
-                opt.value = k.code;
-                opt.textContent = `${k.name} (0x${k.code.toString(16).toUpperCase().padStart(2, '0')})`;
-                if (k.code === kcValues[idx]) opt.selected = true;
-                sel.appendChild(opt);
-            }
-            if (!HID_KEYCODES.find(k => k.code === kcValues[idx])) {
-                const opt = document.createElement('option');
-                opt.value = kcValues[idx];
-                opt.textContent = `Custom (0x${kcValues[idx].toString(16).toUpperCase().padStart(2, '0')})`;
-                opt.selected = true;
-                sel.prepend(opt);
-            }
+            // Update keymap button label
+            const keymapBtn = document.getElementById('pKeymap');
+            const entry = HID_KEYCODES.find(k => k.code === kcValues[idx]);
+            keymapBtn.textContent = entry
+                ? entry.name + ' (0x' + kcValues[idx].toString(16).toUpperCase().padStart(2, '0') + ')'
+                : 'Custom (0x' + kcValues[idx].toString(16).toUpperCase().padStart(2, '0') + ')';
         }
 
         function onDetailSlider(type) {
@@ -1053,11 +1189,18 @@
             updateKeyModified(selectedKey);
         }
 
-        function onKeymapChange() {
+        function openKeymapPicker() {
             if (selectedKey < 0) return;
-            kcValues[selectedKey] = parseInt(document.getElementById('pKeymap').value);
-            updateSvgLabel(selectedKey);        // ← SVGラベルを即時更新
-            updateKeyModified(selectedKey);
+            openKeyPicker(kcValues[selectedKey], HID_KEYCODES, (code) => {
+                kcValues[selectedKey] = code;
+                updateSvgLabel(selectedKey);
+                updateKeyModified(selectedKey);
+                // Update button label
+                const e = HID_KEYCODES.find(k => k.code === code);
+                document.getElementById('pKeymap').textContent = e
+                    ? e.name + ' (0x' + code.toString(16).toUpperCase().padStart(2, '0') + ')'
+                    : 'Custom (0x' + code.toString(16).toUpperCase().padStart(2, '0') + ')';
+            });
         }
 
         function updateKeyModified(idx) {
@@ -1149,17 +1292,22 @@
             plus.style.cssText = 'color:var(--text-muted);font-size:0.8rem';
             el.appendChild(plus);
 
-            const sel = document.createElement('select');
-            sel.className = 'macro-key-select';
-            for (const k of MACRO_KEYS) {
-                const opt = document.createElement('option');
-                opt.value = k.code;
-                opt.textContent = k.name + (k.code ? ' (0x' + k.code.toString(16).toUpperCase() + ')' : '');
-                if (k.code === step.key) opt.selected = true;
-                sel.appendChild(opt);
+            function keyLabel(code) {
+                if (code === 0) return 'なし';
+                const e = HID_KEYCODES.find(k => k.code === code);
+                return e ? e.name : '0x' + code.toString(16).toUpperCase();
             }
-            sel.onchange = () => { step.key = parseInt(sel.value); };
-            el.appendChild(sel);
+
+            const btn = document.createElement('button');
+            btn.className = 'key-pick-btn';
+            btn.textContent = keyLabel(step.key);
+            btn.onclick = () => {
+                openKeyPicker(step.key, MACRO_KEYS, (code) => {
+                    step.key = code;
+                    btn.textContent = keyLabel(code);
+                });
+            };
+            el.appendChild(btn);
 
             const delBtn = document.createElement('button');
             delBtn.className = 'macro-clear-btn';
