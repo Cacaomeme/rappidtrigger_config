@@ -92,11 +92,13 @@ extern volatile uint8_t usb_rx_err;
 __ALIGN_BEGIN static uint8_t CUSTOM_HID_ReportDesc_FS[USBD_CUSTOM_HID_REPORT_DESC_SIZE] __ALIGN_END =
 {
   /* USER CODE BEGIN 0 */
-  // NKRO Bitmap: 1 byte Modifier + 1 byte Reserved + 15 bytes Keys (120 keys)
-  0x05, 0x01,        // Usage Page (Generic Desktop Ctrls)
+
+  // ===== Collection 1: Keyboard (Report ID 1) =====
+  0x05, 0x01,        // Usage Page (Generic Desktop)
   0x09, 0x06,        // Usage (Keyboard)
   0xA1, 0x01,        // Collection (Application)
-  
+  0x85, 0x01,        //   Report ID (1)
+
   // Modifiers (Control, Shift, Alt, GUI)
   0x05, 0x07,        //   Usage Page (Kbrd/Keypad)
   0x19, 0xE0,        //   Usage Minimum (0xE0)
@@ -105,15 +107,14 @@ __ALIGN_BEGIN static uint8_t CUSTOM_HID_ReportDesc_FS[USBD_CUSTOM_HID_REPORT_DES
   0x25, 0x01,        //   Logical Maximum (1)
   0x75, 0x01,        //   Report Size (1)
   0x95, 0x08,        //   Report Count (8)
-  0x81, 0x02,        //   Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+  0x81, 0x02,        //   Input (Data,Var,Abs)
 
   // Reserved byte (Padding)
   0x95, 0x01,        //   Report Count (1)
   0x75, 0x08,        //   Report Size (8)
-  0x81, 0x03,        //   Input (Const,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+  0x81, 0x03,        //   Input (Const,Var,Abs)
 
-  // Bitmap Key Array (120 keys)
-  // 15 bytes * 8 bits = 120 keys
+  // Bitmap Key Array (120 keys = 15 bytes)
   0x95, 0x78,        //   Report Count (120)
   0x75, 0x01,        //   Report Size (1)
   0x15, 0x00,        //   Logical Minimum (0)
@@ -121,28 +122,51 @@ __ALIGN_BEGIN static uint8_t CUSTOM_HID_ReportDesc_FS[USBD_CUSTOM_HID_REPORT_DES
   0x05, 0x07,        //   Usage Page (Kbrd/Keypad)
   0x19, 0x00,        //   Usage Minimum (0x00)
   0x29, 0x77,        //   Usage Maximum (0x77 = 119)
-  0x81, 0x02,        //   Input (Data,Var,Abs,No Wrap,Linear,Preferred State,No Null Position)
+  0x81, 0x02,        //   Input (Data,Var,Abs)
+  0xC0,              // End Collection (Keyboard)
 
-  // Output Report (Vendor Defined for Configuration) 32 bytes
-  0x06, 0x00, 0xFF,  //   Usage Page (Vendor Defined 0xFF00)
-  0x09, 0x01,        //   Usage (0x01)
+  // ===== Collection 2: Consumer Control (Report ID 2) =====
+  0x05, 0x0C,        // Usage Page (Consumer Devices)
+  0x09, 0x01,        // Usage (Consumer Control)
+  0xA1, 0x01,        // Collection (Application)
+  0x85, 0x02,        //   Report ID (2)
+  0x19, 0x00,        //   Usage Minimum (0)
+  0x2A, 0x3C, 0x02,  //   Usage Maximum (0x023C)
+  0x15, 0x00,        //   Logical Minimum (0)
+  0x26, 0x3C, 0x02,  //   Logical Maximum (0x023C)
+  0x95, 0x01,        //   Report Count (1)
+  0x75, 0x10,        //   Report Size (16)
+  0x81, 0x00,        //   Input (Data,Ary,Abs)
+  0xC0,              // End Collection (Consumer)
+
+  // ===== Collection 3: Vendor Defined (Report ID 3,4) =====
+  0x06, 0x00, 0xFF,  // Usage Page (Vendor Defined 0xFF00)
+  0x09, 0x01,        // Usage (Vendor Usage 1)
+  0xA1, 0x01,        // Collection (Application)
+
+  // Output Report (Config commands from host) 32 bytes
+  0x85, 0x03,        //   Report ID (3)
+  0x09, 0x01,        //   Usage (Vendor Usage 1)
   0x15, 0x00,        //   Logical Minimum (0)
   0x26, 0xFF, 0x00,  //   Logical Maximum (255)
   0x75, 0x08,        //   Report Size (8)
   0x95, 0x20,        //   Report Count (32)
   0x91, 0x02,        //   Output (Data,Var,Abs)
 
-  // Feature Report (Vendor Defined for Config Response) 32 bytes
-  0x06, 0x00, 0xFF,  //   Usage Page (Vendor Defined 0xFF00)
-  0x09, 0x02,        //   Usage (0x02)
+  // Feature Report (Config response) 32 bytes
+  0x85, 0x04,        //   Report ID (4)
+  0x09, 0x02,        //   Usage (Vendor Usage 2)
   0x15, 0x00,        //   Logical Minimum (0)
   0x26, 0xFF, 0x00,  //   Logical Maximum (255)
   0x75, 0x08,        //   Report Size (8)
   0x95, 0x20,        //   Report Count (32)
   0xB1, 0x02,        //   Feature (Data,Var,Abs)
 
+  0xC0,              // End Collection (Vendor)
+
   /* USER CODE END 0 */
-  0xC0    /*     END_COLLECTION	             */
+  // Note: All collections are closed in USER CODE above. 
+  // This final byte is required by the array size but all END_COLLECTIONs are accounted for.
 };
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */

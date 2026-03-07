@@ -226,7 +226,7 @@ extern "C" void ProcessFeatureReport(uint8_t* data, uint16_t len, uint8_t* respo
     }
     case CMD_SET_KEYCODE: {
         uint8_t keyIdx = local[1];
-        uint8_t code = local[2];
+        uint16_t code = (uint16_t)local[2] | ((uint16_t)local[3] << 8);
         if (keyIdx >= RapidTriggerKeyboard::TOTAL_KEY_COUNT) {
             response[1] = RESP_INVALID_PARAM; break;
         }
@@ -239,13 +239,17 @@ extern "C" void ProcessFeatureReport(uint8_t* data, uint16_t len, uint8_t* respo
         if (keyIdx == 0xFF) {
             response[1] = RESP_OK;
             int count = RapidTriggerKeyboard::TOTAL_KEY_COUNT;
-            if (count > 30) count = 30;
+            if (count > 15) count = 15;  // 16-bit: 2 bytes per key, max 15 keys
             for (int i = 0; i < count; i++) {
-                response[2 + i] = keyboard.getKeycode(i);
+                uint16_t kc = keyboard.getKeycode(i);
+                response[2 + i * 2] = (uint8_t)(kc & 0xFF);
+                response[2 + i * 2 + 1] = (uint8_t)(kc >> 8);
             }
         } else if (keyIdx < RapidTriggerKeyboard::TOTAL_KEY_COUNT) {
             response[1] = RESP_OK;
-            response[2] = keyboard.getKeycode(keyIdx);
+            uint16_t kc = keyboard.getKeycode(keyIdx);
+            response[2] = (uint8_t)(kc & 0xFF);
+            response[3] = (uint8_t)(kc >> 8);
         } else {
             response[1] = RESP_INVALID_PARAM;
         }
@@ -547,14 +551,32 @@ extern "C" void loop()
 
     scan_us = (DWT->CYCCNT - scan_start) / (SystemCoreClock / 1000000);
 
-    // USBレポート送信 (1ms間隔でスロットル, 1kHz)
+    // USBレポート送信 (Report ID付き, 1ms間隔)
     static uint32_t last_usb_send = 0;
+    static uint16_t last_consumer = 0;
     uint32_t now = HAL_GetTick();
     if (now != last_usb_send) {
         last_usb_send = now;
         KeyboardReport* report = keyboard.getReport();
+        uint16_t consumer = keyboard.getConsumerKey();
+
         if (hUsbDeviceFS.dev_state == USBD_STATE_CONFIGURED) {
-            USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, (uint8_t*)report, sizeof(KeyboardReport));
+            // Consumerキーの状態が変わったら優先送信
+            if (consumer != last_consumer) {
+                uint8_t cc_buf[3];
+                cc_buf[0] = 0x02;  // Report ID 2: Consumer
+                cc_buf[1] = (uint8_t)(consumer & 0xFF);
+                cc_buf[2] = (uint8_t)(consumer >> 8);
+                if (USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, cc_buf, 3) == USBD_OK) {
+                    last_consumer = consumer;
+                }
+            } else {
+                // Keyboardレポート (Report ID 1)
+                uint8_t kb_buf[18];
+                kb_buf[0] = 0x01;  // Report ID 1: Keyboard
+                memcpy(&kb_buf[1], report, sizeof(KeyboardReport));
+                USBD_CUSTOM_HID_SendReport(&hUsbDeviceFS, kb_buf, 18);
+            }
         }
     }
 
@@ -573,8 +595,12 @@ extern "C" void loop()
         bool any_active = false;
         for (int k = 0; k < RapidTriggerKeyboard::TOTAL_KEY_COUNT; k++) {
             if (keyboard.isKeyActive(k)) {
-                uint8_t code = keyboard.getKeycode(k);
-                printf("  [ON] %s(%02X)\r\n", hidCodeToName(code), code);
+                uint16_t code = keyboard.getKeycode(k);
+                if (IS_CONSUMER_KEY(code)) {
+                    printf("  [ON] Media(%04X)\r\n", code);
+                } else {
+                    printf("  [ON] %s(%02X)\r\n", hidCodeToName((uint8_t)code), (uint8_t)code);
+                }
                 any_active = true;
             }
         }

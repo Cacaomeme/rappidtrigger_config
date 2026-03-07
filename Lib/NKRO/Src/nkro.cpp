@@ -19,7 +19,8 @@
 #define INITIAL_CALIBRATION_SAMPLES 16
 
 // デフォルトキーコード (キーインデックス順: 108キー)
-static const uint8_t DEFAULT_KEYCODES[108] = {
+// 0x0000-0x00E7 = 標準キーボード, 0x8xxx = Consumer Control
+static const uint16_t DEFAULT_KEYCODES[108] = {
     // Source 0 (ADC1_IN1, PA0) MUX 0-15: 16 keys
     0x28, // 0:  Enter
     0xE5, // 1:  Right Shift
@@ -347,13 +348,13 @@ uint32_t RapidTriggerKeyboard::getSensitivity(int keyIndex) {
     return 0;
 }
 
-void RapidTriggerKeyboard::setKeycode(int keyIndex, uint8_t code) {
+void RapidTriggerKeyboard::setKeycode(int keyIndex, uint16_t code) {
     if (keyIndex >= 0 && keyIndex < TOTAL_KEY_COUNT) {
         keyStates[keyIndex].keycode = code;
     }
 }
 
-uint8_t RapidTriggerKeyboard::getKeycode(int keyIndex) {
+uint16_t RapidTriggerKeyboard::getKeycode(int keyIndex) {
     if (keyIndex >= 0 && keyIndex < TOTAL_KEY_COUNT) {
         return keyStates[keyIndex].keycode;
     }
@@ -572,8 +573,8 @@ void RapidTriggerKeyboard::loadFromFlash() {
         address += 8;
 
         uint32_t kc = *(__IO uint32_t*)address;
-        // 0x00 is valid (user key), up to 0xE7 (modifiers)
-        if (kc <= 0xE7) keyStates[i].keycode = (uint8_t)kc;
+        // 0x0000-0x00E7: keyboard, 0x8000+: consumer keys
+        if (kc <= 0xFFFF) keyStates[i].keycode = (uint16_t)kc;
         address += 8;
 
         // DW3: macro steps[0-3] + step_count
@@ -704,6 +705,7 @@ static inline void applyKeyToReport(KeyboardReport& report, uint8_t code) {
 
 KeyboardReport* RapidTriggerKeyboard::getReport() {
     memset(&report, 0, sizeof(KeyboardReport));
+    activeConsumerKey = 0;
     uint32_t now = HAL_GetTick();
 
     for (int i = 0; i < TOTAL_KEY_COUNT; i++) {
@@ -743,10 +745,21 @@ KeyboardReport* RapidTriggerKeyboard::getReport() {
         } else {
             // === 通常キーコード ===
             if (ks.is_active) {
-                applyKeyToReport(report, ks.keycode);
+                uint16_t code = ks.keycode;
+                if (IS_CONSUMER_KEY(code)) {
+                    // Consumer キー → consumer レポートへ
+                    activeConsumerKey = CONSUMER_USAGE(code);
+                } else {
+                    // 標準キーボードキー
+                    applyKeyToReport(report, (uint8_t)code);
+                }
             }
         }
     }
 
     return &report;
+}
+
+uint16_t RapidTriggerKeyboard::getConsumerKey() {
+    return activeConsumerKey;
 }

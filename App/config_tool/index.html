@@ -1111,14 +1111,40 @@
             { code: 0x62, name: 'テンキー 0' }, { code: 0x63, name: 'テンキー .' },
             // その他
             { code: 0x65, name: 'Menu (App)' },
+            // === メディアキー (Consumer Control, 0x8000 + Usage ID) ===
+            { code: 0x80E9, name: '🔊 音量 Up' },
+            { code: 0x80EA, name: '🔉 音量 Down' },
+            { code: 0x80E2, name: '🔇 ミュート' },
+            { code: 0x80CD, name: '▶️ 再生/一時停止' },
+            { code: 0x80B5, name: '⏭ 次の曲' },
+            { code: 0x80B6, name: '⏮ 前の曲' },
+            { code: 0x80B7, name: '⏹ 停止' },
+            { code: 0x8183, name: '🎥 メディアプレーヤー' },
+            { code: 0x8192, name: '🧮 電卓' },
+            { code: 0x8194, name: '💻 マイコンピュータ' },
+            { code: 0x8196, name: '🌐 ブラウザ' },
+            { code: 0x8224, name: '⬅ ブラウザ戻る' },
+            { code: 0x8225, name: '➡ ブラウザ進む' },
+            { code: 0x8227, name: '🔄 ブラウザ更新' },
+            { code: 0x806F, name: '☀️ 画面明るく' },
+            { code: 0x8070, name: '🌙 画面暗く' },
         ];
 
         // Returns short display name for a keycode (for SVG labels)
         function keycodeToLabel(code) {
             const entry = HID_KEYCODES.find(k => k.code === code);
-            if (!entry) return '0x' + code.toString(16).toUpperCase();
+            if (!entry) {
+                if (code & 0x8000) return 'M:' + (code & 0x7FFF).toString(16).toUpperCase();
+                return '0x' + code.toString(16).toUpperCase();
+            }
             // Shorten for SVG display
             let n = entry.name;
+            // Consumer keys: strip emoji prefix
+            if (code & 0x8000) {
+                const sp = n.indexOf(' ');
+                if (sp > 0) n = n.substring(sp + 1);
+                return n;
+            }
             if (n.startsWith('テンキー ')) n = n.slice(5);
             // Strip parenthetical: "→ (Right)" → "→"
             const pi = n.indexOf(' (');
@@ -1535,12 +1561,12 @@
             if (!device?.opened) throw new Error('未接続');
             const buf = new Uint8Array(32);
             for (let i = 0; i < Math.min(data.length, 32); i++) buf[i] = data[i];
-            await device.sendFeatureReport(0, buf);
+            await device.sendFeatureReport(4, buf);
         }
         async function recvFR() {
             if (!device?.opened) throw new Error('未接続');
             await new Promise(r => setTimeout(r, 50));
-            const result = await device.receiveFeatureReport(0);
+            const result = await device.receiveFeatureReport(4);
             return new Uint8Array(result.buffer);
         }
 
@@ -1575,17 +1601,18 @@
                     if (r[1] === RESP.OK) { const v = r[2] | (r[3] << 8); if (v <= 500) { dzValues[i] = v; dzOrig[i] = v; } }
                 }
 
-                // Keycodes (first 30 via bulk)
+                // Keycodes (first 15 via bulk, 16-bit per key)
                 await sendFR([CMD.GET_KEYCODE, 0xFF]); resp = await recvFR();
                 if (resp[1] === RESP.OK) {
-                    for (let i = 0; i < keyCount && i < 30; i++) {
-                        kcValues[i] = resp[2 + i]; kcOrig[i] = resp[2 + i];
+                    for (let i = 0; i < keyCount && i < 15; i++) {
+                        kcValues[i] = resp[2 + i * 2] | (resp[3 + i * 2] << 8);
+                        kcOrig[i] = kcValues[i];
                     }
                 }
                 // Remaining keys individually
-                for (let i = 30; i < keyCount; i++) {
+                for (let i = 15; i < keyCount; i++) {
                     await sendFR([CMD.GET_KEYCODE, i]); const r = await recvFR();
-                    if (r[1] === RESP.OK) { kcValues[i] = r[2]; kcOrig[i] = r[2]; }
+                    if (r[1] === RESP.OK) { kcValues[i] = r[2] | (r[3] << 8); kcOrig[i] = kcValues[i]; }
                 }
 
                 // LED
@@ -1638,7 +1665,8 @@
                         else log(`Key ${i} DZ書込エラー`, 'error');
                     }
                     if (kcValues[i] !== kcOrig[i]) {
-                        await sendFR([CMD.SET_KEYCODE, i, kcValues[i]]);
+                        const kc = kcValues[i];
+                        await sendFR([CMD.SET_KEYCODE, i, kc & 0xFF, (kc >> 8) & 0xFF]);
                         const r = await recvFR();
                         if (r[1] === RESP.OK) { kcOrig[i] = kcValues[i]; count++; }
                         else log(`Key ${i} キーコード書込エラー`, 'error');

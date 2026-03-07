@@ -5,6 +5,11 @@
 #include <stdbool.h>
 #include <string.h>
 
+// Consumer Key フラグ (keycode の bit15)
+#define CONSUMER_KEY_FLAG  0x8000
+#define IS_CONSUMER_KEY(code) (((code) & CONSUMER_KEY_FLAG) != 0)
+#define CONSUMER_USAGE(code)  ((code) & 0x7FFF)
+
 // NKRO対応のレポート構造体 (17バイト)
 typedef struct {
     uint8_t MODIFIER;
@@ -46,7 +51,7 @@ struct RapidTriggerState {
     uint32_t baseline;
     bool calibrated;
     uint32_t sensitivity;
-    uint8_t keycode;         // HIDキーコード (0xE0-0xE7 = 修飾キー)
+    uint16_t keycode;        // HIDキーコード (0x00-0xE7: キーボード, 0x8xxx: Consumer)
     uint32_t dead_zone;
 
     // 初期キャリブレーション用 (ランタイムのみ)
@@ -80,9 +85,9 @@ public:
     void setSensitivity(int keyIndex, uint32_t value);
     uint32_t getSensitivity(int keyIndex);
 
-    // キーコード
-    void setKeycode(int keyIndex, uint8_t code);
-    uint8_t getKeycode(int keyIndex);
+    // キーコード (16bit: 0x0000-0x00E7=キーボード, 0x8xxx=Consumer)
+    void setKeycode(int keyIndex, uint16_t code);
+    uint16_t getKeycode(int keyIndex);
 
     // デッドゾーン
     void setDeadZone(int keyIndex, uint32_t value);
@@ -111,6 +116,7 @@ public:
 
     // レポート生成
     KeyboardReport* getReport();
+    uint16_t getConsumerKey();  // アクティブなConsumerキーのUsage ID (0=なし)
 
 private:
     // [Source][MuxIndex] -> StateIndex (-1 if unused)
@@ -118,6 +124,7 @@ private:
 
     RapidTriggerState keyStates[TOTAL_KEY_COUNT];
     KeyboardReport report;
+    uint16_t activeConsumerKey;  // 現在押されているConsumerキーのUsage ID
 
     void updateRapidTriggerState(RapidTriggerState& state, uint32_t currentVal);
 };
