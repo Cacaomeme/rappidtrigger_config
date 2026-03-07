@@ -477,7 +477,7 @@ static uint8_t USBD_CUSTOM_HID_Setup(USBD_HandleTypeDef *pdev,
         case CUSTOM_HID_REQ_GET_REPORT:
           /* GET_REPORT: Send Feature Report data to host */
           (void)USBD_CtlSendData(pdev, hhid->Feature_buf,
-                                 MIN(32U, req->wLength));
+                                 MIN(USBD_CUSTOMHID_OUTREPORT_BUF_SIZE, req->wLength));
           break;
 
         case CUSTOM_HID_REQ_SET_REPORT:
@@ -741,8 +741,8 @@ static uint8_t USBD_CUSTOM_HID_EP0_RxReady(USBD_HandleTypeDef *pdev)
   if (hhid->IsFeatureReportAvailable == 1U)
   {
     /* Feature Report received via SET_REPORT */
-    ((USBD_CUSTOM_HID_ItfTypeDef *)pdev->pUserData)->OutEvent(hhid->Feature_buf[0],
-                                                               hhid->Feature_buf[1]);
+    extern void ProcessFeatureReport(uint8_t* data, uint16_t len, uint8_t* response);
+    ProcessFeatureReport(hhid->Feature_buf, USBD_CUSTOMHID_OUTREPORT_BUF_SIZE, hhid->Feature_buf);
     hhid->IsFeatureReportAvailable = 0U;
     hhid->IsReportAvailable = 0U;
   }

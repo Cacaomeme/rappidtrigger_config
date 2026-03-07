@@ -179,17 +179,28 @@ static uint32_t readADCChannel(ADC_HandleTypeDef* hadc, uint32_t channel) {
     return readADCOnce(hadc);
 }
 
-extern "C" void ProcessFeatureReport(uint8_t* data, uint16_t len, uint8_t* response) {
+extern "C" void ProcessFeatureReport(uint8_t* data, uint16_t len, uint8_t* response_out) {
     usb_rx_cnt++;
-    if (len < 1) return;
+    if (len < 2) return; // Need Report ID + at least 1 command byte
+
+    // Report ID is the first byte of data; skip it for command processing
+    uint8_t reportId = data[0];
 
     uint8_t local[32];
-    memcpy(local, data, 32);
+    memset(local, 0, 32);
+    uint16_t copyLen = (len - 1) < 32 ? (len - 1) : 31;
+    memcpy(local, data + 1, copyLen); // Skip Report ID
 
     uint8_t cmd = local[0];
     last_received_cmd = cmd;
 
-    memset(response, 0, 32);
+    // response_out[0] = Report ID (for GET_REPORT response)
+    // response_out[1..32] = actual response data
+    memset(response_out, 0, 33);
+    response_out[0] = reportId;
+
+    // 'response' points to response_out+1 so existing code indices are unchanged
+    uint8_t* response = response_out + 1;
     response[0] = cmd;
 
     switch (cmd) {

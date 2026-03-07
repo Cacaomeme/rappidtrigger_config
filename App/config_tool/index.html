@@ -263,30 +263,31 @@
         .keyboard-grid {
             display: flex; flex-direction: column; gap: 4px;
             background: #111; padding: 20px; border-radius: 12px;
-            overflow-x: auto; zoom: 0.8; width: max-content; margin: 0 auto;
+            overflow-x: auto; width: max-content; margin: 0 auto;
         }
-        .kb-row { display: flex; gap: 4px; height: 40px; }
+        .kb-row { display: flex; gap: 4px; height: 44px; }
         .kb-key {
             background: var(--surface); border: 1px solid var(--border);
-            border-radius: 6px; color: var(--text); font-size: 0.75rem;
+            border-radius: 6px; color: var(--text); font-size: 0.7rem;
             font-weight: 500; display: flex; align-items: center; justify-content: center;
             cursor: pointer; user-select: none; transition: all 0.15s;
-            width: 40px; height: 40px; box-sizing: border-box;
+            width: 44px; height: 44px; box-sizing: border-box;
         }
         .kb-key:hover { background: var(--surface-hover); border-color: var(--accent); }
         .kb-key.selected { background: rgba(108, 92, 231, 0.2); border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
         .kb-key.modified { border-color: var(--warning); }
-        .key-125 { width: 51px; }
-        .key-150 { width: 62px; }
-        .key-175 { width: 73px; }
-        .key-200 { width: 84px; }
-        .key-225 { width: 95px; }
-        .key-275 { width: 117px; }
-        .key-space { width: 271px; }
-        .key-h200 { height: 84px; z-index: 10; display:flex; align-items:flex-end; padding-bottom:10px; }
-        .kb-spacer.std { width: 40px; }
-        .kb-spacer.half { width: 20px; }
-        .kb-spacer.nav { width: 176px; }
+        .key-125 { width: 56px; }
+        .key-150 { width: 68px; }
+        .key-175 { width: 80px; }
+        .key-200 { width: 92px; }
+        .key-225 { width: 104px; }
+        .key-275 { width: 128px; }
+        .key-space { width: 296px; }
+        .key-h200 { height: 92px; z-index: 10; display:flex; align-items:flex-end; padding-bottom:10px; }
+        .kb-spacer.std { width: 44px; }
+        .kb-spacer.half { width: 22px; }
+        .kb-spacer.fgap { width: 20px; }
+        .kb-spacer.nav { width: 192px; }
 
         .detail-panel {
             flex: 1;
@@ -796,12 +797,12 @@
     <div class="kb-key" data-key="61" id="kb-key-61">F2</div>
     <div class="kb-key" data-key="57" id="kb-key-57">F3</div>
     <div class="kb-key" data-key="44" id="kb-key-44">F4</div>
-    <div class="kb-spacer half"></div>
+    <div class="kb-spacer fgap"></div>
     <div class="kb-key" data-key="41" id="kb-key-41">F5</div>
     <div class="kb-key" data-key="30" id="kb-key-30">F6</div>
     <div class="kb-key" data-key="28" id="kb-key-28">F7</div>
     <div class="kb-key" data-key="25" id="kb-key-25">F8</div>
-    <div class="kb-spacer half"></div>
+    <div class="kb-spacer fgap"></div>
     <div class="kb-key" data-key="15" id="kb-key-15">F9</div>
     <div class="kb-key" data-key="11" id="kb-key-11">F10</div>
     <div class="kb-key" data-key="10" id="kb-key-10">F11</div>
@@ -811,10 +812,10 @@
     <div class="kb-key" data-key="79" id="kb-key-79">ScrLk</div>
     <div class="kb-key" data-key="91" id="kb-key-91">Pause</div>
     <div class="kb-spacer half"></div>
-    <div class="kb-key" data-key="66" id="kb-key-66">U1</div>
-    <div class="kb-key" data-key="68" id="kb-key-68">U2</div>
-    <div class="kb-key" data-key="88" id="kb-key-88">U3</div>
     <div class="kb-key" data-key="90" id="kb-key-90">U4</div>
+    <div class="kb-key" data-key="88" id="kb-key-88">U3</div>
+    <div class="kb-key" data-key="68" id="kb-key-68">U2</div>
+    <div class="kb-key" data-key="66" id="kb-key-66">U1</div>
   </div>
   <div class="kb-row">
     <div class="kb-key" data-key="107" id="kb-key-107">`</div>
@@ -1567,7 +1568,13 @@
             if (!device?.opened) throw new Error('未接続');
             await new Promise(r => setTimeout(r, 50));
             const result = await device.receiveFeatureReport(4);
-            return new Uint8Array(result.buffer);
+            let arr = new Uint8Array(result.buffer, result.byteOffset, result.byteLength);
+            // Some browsers include Report ID in returned data (33 bytes),
+            // others strip it (32 bytes). Handle both cases.
+            if (arr.length > 32) {
+                arr = arr.slice(1); // Skip Report ID byte
+            }
+            return arr;
         }
 
         // ===== Commands =====
