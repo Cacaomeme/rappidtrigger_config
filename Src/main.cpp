@@ -13,6 +13,7 @@ extern ADC_HandleTypeDef hadc2;
 RapidTriggerKeyboard keyboard;
 
 volatile uint32_t led_brightness = 0;
+volatile bool usb_suspended = false;
 
 volatile bool config_update_request = false;
 volatile uint8_t config_target = 0;
@@ -669,7 +670,9 @@ extern "C" void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
             }
         }
 
-        uint32_t pwm_val = (uint32_t)led_brightness * led_brightness;
+        // USB Suspendedの場合(PC sleep)、LEDを消灯
+        uint32_t brightness = usb_suspended ? 0 : (uint32_t)led_brightness;
+        uint32_t pwm_val = brightness * brightness;
         __HAL_TIM_SET_COMPARE(&htim3, TIM_CHANNEL_2, pwm_val);
     }
 }

@@ -276,7 +276,8 @@ void HAL_PCD_SuspendCallback(PCD_HandleTypeDef *hpcd)
   }
   /* USER CODE END 2 */
   /* USER CODE BEGIN HAL_PCD_SuspendCallback_PostTreatment */
-
+  extern volatile _Bool usb_suspended;
+  usb_suspended = 1;
   /* USER CODE END HAL_PCD_SuspendCallback_PostTreatment */
 }
 
@@ -307,7 +308,8 @@ void HAL_PCD_ResumeCallback(PCD_HandleTypeDef *hpcd)
 
   USBD_LL_Resume((USBD_HandleTypeDef*)hpcd->pData);
   /* USER CODE BEGIN HAL_PCD_ResumeCallback_PostTreatment */
-
+  extern volatile _Bool usb_suspended;
+  usb_suspended = 0;
   /* USER CODE END HAL_PCD_ResumeCallback_PostTreatment */
 }
 
