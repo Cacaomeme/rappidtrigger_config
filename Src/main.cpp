@@ -32,6 +32,10 @@ volatile uint8_t last_payload[4] = {0};
 #define CMD_GET_KEYCODE      0x04
 #define CMD_SET_DEADZONE     0x05
 #define CMD_GET_DEADZONE     0x06
+#define CMD_SET_ON_THRESHOLD 0x07
+#define CMD_GET_ON_THRESHOLD 0x08
+#define CMD_SET_OFF_THRESHOLD 0x09
+#define CMD_GET_OFF_THRESHOLD 0x0A
 #define CMD_SAVE_TO_FLASH    0x10
 #define CMD_RESET_DEFAULTS   0x11
 #define CMD_GET_KEY_COUNT    0x20
@@ -233,6 +237,68 @@ extern "C" void ProcessFeatureReport(uint8_t* data, uint16_t len, uint8_t* respo
             uint16_t s = (uint16_t)keyboard.getSensitivity(keyIdx);
             response[2] = (uint8_t)(s & 0xFF);
             response[3] = (uint8_t)(s >> 8);
+        }
+        break;
+    }
+    case CMD_SET_ON_THRESHOLD: {
+        uint8_t keyIdx = local[1];
+        uint16_t value = (uint16_t)local[2] | ((uint16_t)local[3] << 8);
+        if (value < 1 || value > 1000) {
+            response[1] = RESP_INVALID_PARAM; break;
+        }
+        keyboard.setOnThreshold((int)keyIdx, (uint32_t)value);
+        response[1] = RESP_OK;
+        break;
+    }
+    case CMD_GET_ON_THRESHOLD: {
+        uint8_t keyIdx = local[1];
+        if (keyIdx >= RapidTriggerKeyboard::TOTAL_KEY_COUNT && keyIdx != 0xFF) {
+            response[1] = RESP_INVALID_PARAM; break;
+        }
+        response[1] = RESP_OK;
+        if (keyIdx == 0xFF) {
+            int count = RapidTriggerKeyboard::TOTAL_KEY_COUNT;
+            if (count > 15) count = 15;
+            for (int i = 0; i < count; i++) {
+                uint16_t value = (uint16_t)keyboard.getOnThreshold(i);
+                response[2 + i * 2] = (uint8_t)(value & 0xFF);
+                response[2 + i * 2 + 1] = (uint8_t)(value >> 8);
+            }
+        } else {
+            uint16_t value = (uint16_t)keyboard.getOnThreshold(keyIdx);
+            response[2] = (uint8_t)(value & 0xFF);
+            response[3] = (uint8_t)(value >> 8);
+        }
+        break;
+    }
+    case CMD_SET_OFF_THRESHOLD: {
+        uint8_t keyIdx = local[1];
+        uint16_t value = (uint16_t)local[2] | ((uint16_t)local[3] << 8);
+        if (value < 1 || value > 1000) {
+            response[1] = RESP_INVALID_PARAM; break;
+        }
+        keyboard.setOffThreshold((int)keyIdx, (uint32_t)value);
+        response[1] = RESP_OK;
+        break;
+    }
+    case CMD_GET_OFF_THRESHOLD: {
+        uint8_t keyIdx = local[1];
+        if (keyIdx >= RapidTriggerKeyboard::TOTAL_KEY_COUNT && keyIdx != 0xFF) {
+            response[1] = RESP_INVALID_PARAM; break;
+        }
+        response[1] = RESP_OK;
+        if (keyIdx == 0xFF) {
+            int count = RapidTriggerKeyboard::TOTAL_KEY_COUNT;
+            if (count > 15) count = 15;
+            for (int i = 0; i < count; i++) {
+                uint16_t value = (uint16_t)keyboard.getOffThreshold(i);
+                response[2 + i * 2] = (uint8_t)(value & 0xFF);
+                response[2 + i * 2 + 1] = (uint8_t)(value >> 8);
+            }
+        } else {
+            uint16_t value = (uint16_t)keyboard.getOffThreshold(keyIdx);
+            response[2] = (uint8_t)(value & 0xFF);
+            response[3] = (uint8_t)(value >> 8);
         }
         break;
     }

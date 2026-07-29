@@ -8,10 +8,11 @@
 #define FLASH_USER_START_ADDR   0x0801E000
 #define FLASH_PAGE_START        60
 #define FLASH_PAGE_COUNT        3
-#define FLASH_MAGIC_NUMBER      0xC00F0005  // v5: full keyboard
+#define FLASH_MAGIC_NUMBER      0xC00F0006  // v6: full keyboard + split ON/OFF thresholds
 
 // デフォルト値
-#define DEFAULT_SENSITIVITY  50
+#define DEFAULT_SENSITIVITY_ON  50
+#define DEFAULT_SENSITIVITY_OFF 100
 #define DEFAULT_DEAD_ZONE    30
 #define DEFAULT_LED_MODE     LED_MODE_FADE
 #define DEFAULT_LED_BRIGHT   255
@@ -175,11 +176,13 @@ void RapidTriggerKeyboard::init() {
         keyStates[keyCounter].is_active = false;
         keyStates[keyCounter].baseline = 0;
         keyStates[keyCounter].calibrated = false;
-        keyStates[keyCounter].sensitivity = DEFAULT_SENSITIVITY;
+        keyStates[keyCounter].sensitivity_on = DEFAULT_SENSITIVITY_ON;
+        keyStates[keyCounter].sensitivity_off = DEFAULT_SENSITIVITY_OFF;
         keyStates[keyCounter].keycode = hidCode;
         keyStates[keyCounter].dead_zone = DEFAULT_DEAD_ZONE;
         keyStates[keyCounter].calibration_samples = 0;
         keyStates[keyCounter].calibration_sum = 0;
+        keyStates[keyCounter].on_debounce_count = 0;
         keyStates[keyCounter].macro_step_count = 0;
         memset(keyStates[keyCounter].macro_steps, 0, sizeof(keyStates[keyCounter].macro_steps));
         keyStates[keyCounter].was_active = false;
@@ -334,16 +337,59 @@ void RapidTriggerKeyboard::setSensitivity(int keyIndex, uint32_t value) {
 
     if (keyIndex == 255 || keyIndex == -1) {
         for (int i = 0; i < TOTAL_KEY_COUNT; i++) {
-            keyStates[i].sensitivity = value;
+            keyStates[i].sensitivity_on = value;
+            keyStates[i].sensitivity_off = value;
         }
     } else if (keyIndex >= 0 && keyIndex < TOTAL_KEY_COUNT) {
-        keyStates[keyIndex].sensitivity = value;
+        keyStates[keyIndex].sensitivity_on = value;
+        keyStates[keyIndex].sensitivity_off = value;
     }
 }
 
 uint32_t RapidTriggerKeyboard::getSensitivity(int keyIndex) {
     if (keyIndex >= 0 && keyIndex < TOTAL_KEY_COUNT) {
-        return keyStates[keyIndex].sensitivity;
+        // 旧API互換: ONしきい値を返す
+        return keyStates[keyIndex].sensitivity_on;
+    }
+    return 0;
+}
+
+void RapidTriggerKeyboard::setOnThreshold(int keyIndex, uint32_t value) {
+    if (value < 1) value = 1;
+    if (value > 1000) value = 1000;
+
+    if (keyIndex == 255 || keyIndex == -1) {
+        for (int i = 0; i < TOTAL_KEY_COUNT; i++) {
+            keyStates[i].sensitivity_on = value;
+        }
+    } else if (keyIndex >= 0 && keyIndex < TOTAL_KEY_COUNT) {
+        keyStates[keyIndex].sensitivity_on = value;
+    }
+}
+
+uint32_t RapidTriggerKeyboard::getOnThreshold(int keyIndex) {
+    if (keyIndex >= 0 && keyIndex < TOTAL_KEY_COUNT) {
+        return keyStates[keyIndex].sensitivity_on;
+    }
+    return 0;
+}
+
+void RapidTriggerKeyboard::setOffThreshold(int keyIndex, uint32_t value) {
+    if (value < 1) value = 1;
+    if (value > 1000) value = 1000;
+
+    if (keyIndex == 255 || keyIndex == -1) {
+        for (int i = 0; i < TOTAL_KEY_COUNT; i++) {
+            keyStates[i].sensitivity_off = value;
+        }
+    } else if (keyIndex >= 0 && keyIndex < TOTAL_KEY_COUNT) {
+        keyStates[keyIndex].sensitivity_off = value;
+    }
+}
+
+uint32_t RapidTriggerKeyboard::getOffThreshold(int keyIndex) {
+    if (keyIndex >= 0 && keyIndex < TOTAL_KEY_COUNT) {
+        return keyStates[keyIndex].sensitivity_off;
     }
     return 0;
 }
@@ -422,16 +468,17 @@ bool RapidTriggerKeyboard::isKeyActive(int keyIndex) {
 }
 
 // ===== Flash 保存 / 読み込み =====
-// Layout v5 (3 pages: 60-62, 6KB total)
+// Layout v6 (3 pages: 60-62, 6KB total)
 // [0]       Magic (8B)
 // [1]       LED Config (8B)
-// [2..109]  KeyData × 108: each = 5 doublewords (40B)
-//   DW0: sensitivity
-//   DW1: dead_zone
-//   DW2: keycode
-//   DW3: macro_step_count | steps[0-3]
-//   DW4: steps[4-7]
-// Total: 16 + 108*40 = 4336B (fits in 3 × 2KB pages)
+// [2..]     KeyData × 108: each = 6 doublewords (48B)
+//   DW0: sensitivity_on
+//   DW1: sensitivity_off
+//   DW2: dead_zone
+//   DW3: keycode
+//   DW4: macro_step_count | steps[0-3]
+//   DW5: steps[4-7]
+// Total: 16 + 108*48 = 5200B (fits in 3 × 2KB pages)
 
 void RapidTriggerKeyboard::saveToFlash() {
     HAL_FLASH_Unlock();
@@ -485,17 +532,25 @@ void RapidTriggerKeyboard::saveToFlash() {
     }
     address += 8;
 
-    // Write Key Data (5 DWs per key)
+    // Write Key Data (6 DWs per key)
     for (int i = 0; i < TOTAL_KEY_COUNT; i++) {
-        // DW0: sensitivity
+        // DW0: sensitivity_on
         if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, address,
-                              (uint64_t)keyStates[i].sensitivity) != HAL_OK) {
+                              (uint64_t)keyStates[i].sensitivity_on) != HAL_OK) {
             flash_status = 3; flash_error_code = HAL_FLASH_GetError();
             flash_debug_val = (uint32_t)i; HAL_FLASH_Lock(); return;
         }
         address += 8;
 
-        // DW1: dead_zone
+        // DW1: sensitivity_off
+        if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, address,
+                              (uint64_t)keyStates[i].sensitivity_off) != HAL_OK) {
+            flash_status = 3; flash_error_code = HAL_FLASH_GetError();
+            flash_debug_val = (uint32_t)i; HAL_FLASH_Lock(); return;
+        }
+        address += 8;
+
+        // DW2: dead_zone
         if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, address,
                               (uint64_t)keyStates[i].dead_zone) != HAL_OK) {
             flash_status = 3; flash_error_code = HAL_FLASH_GetError();
@@ -503,7 +558,7 @@ void RapidTriggerKeyboard::saveToFlash() {
         }
         address += 8;
 
-        // DW2: keycode
+        // DW3: keycode
         if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_DOUBLEWORD, address,
                               (uint64_t)keyStates[i].keycode) != HAL_OK) {
             flash_status = 3; flash_error_code = HAL_FLASH_GetError();
@@ -511,7 +566,7 @@ void RapidTriggerKeyboard::saveToFlash() {
         }
         address += 8;
 
-        // DW3: macro steps[0-3] + step_count
+        // DW4: macro steps[0-3] + step_count
         uint64_t macro_dw3 = (uint64_t)keyStates[i].macro_step_count;
         for (int s = 0; s < 4 && s < MAX_MACRO_STEPS; s++) {
             macro_dw3 |= ((uint64_t)keyStates[i].macro_steps[s].modifiers << (8 + s*16));
@@ -523,7 +578,7 @@ void RapidTriggerKeyboard::saveToFlash() {
         }
         address += 8;
 
-        // DW4: macro steps[4-7]
+        // DW5: macro steps[4-7]
         uint64_t macro_dw4 = 0;
         for (int s = 0; s < 4; s++) {
             int si = s + 4;
@@ -548,7 +603,7 @@ void RapidTriggerKeyboard::loadFromFlash() {
 
     uint32_t magic = *(__IO uint32_t*)address;
     if (magic != FLASH_MAGIC_NUMBER) {
-        printf("[FLASH] No valid v5 data (magic=0x%08lX)\r\n", magic);
+        printf("[FLASH] No valid v6 data (magic=0x%08lX)\r\n", magic);
         return;
     }
     address += 8;
@@ -564,8 +619,12 @@ void RapidTriggerKeyboard::loadFromFlash() {
 
     // Key Data
     for (int i = 0; i < TOTAL_KEY_COUNT; i++) {
-        uint32_t sens = *(__IO uint32_t*)address;
-        if (sens >= 1 && sens <= 1000) keyStates[i].sensitivity = sens;
+        uint32_t sens_on = *(__IO uint32_t*)address;
+        if (sens_on >= 1 && sens_on <= 1000) keyStates[i].sensitivity_on = sens_on;
+        address += 8;
+
+        uint32_t sens_off = *(__IO uint32_t*)address;
+        if (sens_off >= 1 && sens_off <= 1000) keyStates[i].sensitivity_off = sens_off;
         address += 8;
 
         uint32_t dz = *(__IO uint32_t*)address;
@@ -577,7 +636,7 @@ void RapidTriggerKeyboard::loadFromFlash() {
         if (kc <= 0xFFFF) keyStates[i].keycode = (uint16_t)kc;
         address += 8;
 
-        // DW3: macro steps[0-3] + step_count
+        // DW4: macro steps[0-3] + step_count
         uint64_t macro_dw3 = *(__IO uint64_t*)address;
         uint8_t sc = macro_dw3 & 0xFF;
         if (sc <= MAX_MACRO_STEPS) {
@@ -589,7 +648,7 @@ void RapidTriggerKeyboard::loadFromFlash() {
         }
         address += 8;
 
-        // DW4: macro steps[4-7]
+        // DW5: macro steps[4-7]
         uint64_t macro_dw4 = *(__IO uint64_t*)address;
         for (int s = 0; s < 4; s++) {
             int si = s + 4;
@@ -606,7 +665,8 @@ void RapidTriggerKeyboard::loadFromFlash() {
 
 void RapidTriggerKeyboard::resetDefaults() {
     for (int i = 0; i < TOTAL_KEY_COUNT; i++) {
-        keyStates[i].sensitivity = DEFAULT_SENSITIVITY;
+        keyStates[i].sensitivity_on = DEFAULT_SENSITIVITY_ON;
+        keyStates[i].sensitivity_off = DEFAULT_SENSITIVITY_OFF;
         keyStates[i].dead_zone = DEFAULT_DEAD_ZONE;
         keyStates[i].keycode = DEFAULT_KEYCODES[i];
         keyStates[i].macro_step_count = 0;
@@ -618,6 +678,7 @@ void RapidTriggerKeyboard::resetDefaults() {
         keyStates[i].calibrated = false;
         keyStates[i].calibration_samples = 0;
         keyStates[i].calibration_sum = 0;
+        keyStates[i].on_debounce_count = 0;
         keyStates[i].is_active = false;
     }
     ledConfig.mode = DEFAULT_LED_MODE;
@@ -628,7 +689,17 @@ void RapidTriggerKeyboard::resetDefaults() {
 
 void RapidTriggerKeyboard::updateRapidTriggerState(RapidTriggerState& state, uint32_t currentVal) {
     if (!state.calibrated) {
-        if (state.calibration_samples == 0) {
+        // 最初の16サンプルを捨て、続く16サンプルの平均をベースラインにする。
+        const uint16_t DISCARD_SAMPLES = 16;
+        const uint16_t CALIB_SAMPLES = INITIAL_CALIBRATION_SAMPLES;
+
+        if (state.calibration_samples < DISCARD_SAMPLES) {
+            state.calibration_samples++;
+            return;
+        }
+
+        uint16_t real_idx = state.calibration_samples - DISCARD_SAMPLES;
+        if (real_idx == 0) {
             state.low_peak = currentVal;
             state.high_peak = currentVal;
             state.calibration_sum = 0;
@@ -640,13 +711,16 @@ void RapidTriggerKeyboard::updateRapidTriggerState(RapidTriggerState& state, uin
         state.calibration_sum += currentVal;
         state.calibration_samples++;
 
-        if (state.calibration_samples >= INITIAL_CALIBRATION_SAMPLES) {
-            state.baseline = state.calibration_sum / state.calibration_samples;
+        if (real_idx + 1 >= CALIB_SAMPLES) {
+            state.baseline = state.calibration_sum / CALIB_SAMPLES;
             state.low_peak = state.baseline;
             state.high_peak = state.baseline;
+            // 以後は1024倍精度のEMAアキュムレータとして再利用する。
+            state.calibration_sum = state.baseline * 1024;
             state.calibrated = true;
             state.is_active = false;
             state.was_active = false;
+            state.on_debounce_count = 0;
         }
         return;
     }
@@ -655,36 +729,46 @@ void RapidTriggerKeyboard::updateRapidTriggerState(RapidTriggerState& state, uin
     if (currentVal < state.low_peak) state.low_peak = currentVal;
 
     uint32_t activation_floor = state.baseline + state.dead_zone;
-    uint32_t release_threshold = activation_floor + (state.sensitivity / 2);
+    uint32_t release_threshold = activation_floor + (state.sensitivity_off / 2);
 
     if (state.is_active) {
-        bool fellFromPeak = (currentVal < (state.high_peak - state.sensitivity));
+        bool fellFromPeak = (currentVal < (state.high_peak - state.sensitivity_off));
         bool fellBelowRelease = (currentVal <= release_threshold);
 
         if (fellFromPeak || fellBelowRelease) {
             state.is_active = false;
             state.low_peak = currentVal;
             state.high_peak = currentVal;
+            state.on_debounce_count = 0;
         } else if (currentVal > state.high_peak) {
             state.high_peak = currentVal;
         }
     } else {
-        bool movedEnough = (currentVal > (state.low_peak + state.sensitivity));
+        bool movedEnough = (currentVal > (state.low_peak + state.sensitivity_on));
         bool aboveBaseline = (currentVal > activation_floor);
 
         if (movedEnough && aboveBaseline) {
-            state.is_active = true;
-            state.high_peak = currentVal;
+            if (state.on_debounce_count < 0xFF) state.on_debounce_count++;
+            if (state.on_debounce_count >= 2) {
+                state.is_active = true;
+                state.high_peak = currentVal;
+                state.on_debounce_count = 0;
+            }
+        } else {
+            state.on_debounce_count = 0;
         }
 
         if (currentVal <= activation_floor) {
             state.is_active = false;
             state.high_peak = currentVal;
             state.low_peak = currentVal;
+            state.on_debounce_count = 0;
 
-            // キーが完全にオフ(デッドゾーン以下)の時のみ、温度ドリフト等のためベースラインを追従
-            int32_t diff = (int32_t)currentVal - (int32_t)state.baseline;
-            state.baseline += (diff / 32);
+            // デッドゾーン以下のときだけ高精度EMAでベースラインを追従する。
+            state.calibration_sum = state.calibration_sum
+                                  - (state.calibration_sum / 1024)
+                                  + currentVal;
+            state.baseline = state.calibration_sum / 1024;
         }
     }
 }
